@@ -211,10 +211,10 @@ class SalesforceChatHelper {
   }
 
   Future<void> handleAppLifecycleState(AppLifecycleState state) async {
-    if (state == AppLifecycleState.resumed) {
+    if (state == .resumed) {
       await _injectEndChat();
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
+    } else if (state == .paused ||
+        state == .inactive) {
       if (!Platform.isIOS) {
         await _nativePausedEndChat();
       }
