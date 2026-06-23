@@ -3,58 +3,16 @@ import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
-    private let channelName = "com.sf.mintel.chat.helper/session"
-
     override func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
         setupCrashReporting()
-        let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
-
-        if let controller = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: channelName, binaryMessenger: controller.binaryMessenger)
-            channel.setMethodCallHandler { [weak self] (call, result) in
-                if call.method == "saveSession" {
-                    if let args = call.arguments as? [String: Any],
-                        let sessionId = args["sessionId"] as? String,
-                        let token = args["token"] as? String,
-                        let endpoint = args["endpoint"] as? String
-                    {
-                        self?.saveSession(sessionId: sessionId, token: token, endpoint: endpoint)
-                        result(nil)
-                    } else {
-                        result(FlutterError(code: "INVALID_ARGUMENTS", message: "Arguments error", details: nil))
-                    }
-                } else if call.method == "clearSession" {
-                    self?.clearSession()
-                    result(nil)
-                } else {
-                    result(FlutterMethodNotImplemented)
-                }
-            }
-        }
-        return result
+        return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 
     func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
         GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    }
-
-    private func saveSession(sessionId: String, token: String, endpoint: String) {
-        let defaults = UserDefaults.standard
-        defaults.set(sessionId, forKey: "sf_session_id")
-        defaults.set(token, forKey: "sf_token")
-        defaults.set(endpoint, forKey: "sf_endpoint")
-        defaults.synchronize()
-    }
-
-    private func clearSession() {
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: "sf_session_id")
-        defaults.removeObject(forKey: "sf_token")
-        defaults.removeObject(forKey: "sf_endpoint")
-        defaults.synchronize()
     }
 
     override func applicationWillTerminate(_ application: UIApplication) {
@@ -100,7 +58,9 @@ import UIKit
         // Wait for the request to complete (up to 2.5 seconds)
         _ = semaphore.wait(timeout: .now() + 2.5)
 
-        clearSession()
+        defaults.removeObject(forKey: "sf_session_id")
+        defaults.removeObject(forKey: "sf_token")
+        defaults.removeObject(forKey: "sf_endpoint")
     }
 }
 

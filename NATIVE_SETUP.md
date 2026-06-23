@@ -205,77 +205,35 @@ class ChatCleanupService : Service() {
 
 ## 3. iOS Native Setup (Swift)
 
-On iOS, we use `UserDefaults` to save the active session. When `applicationWillTerminate` is triggered, we configure a background `URLSession` configuration (`URLSessionConfiguration.background`). This tells iOS to take over and finalize the network request even if the app's process is killed.
+On iOS, we use `UserDefaults` to save the active session. When `applicationWillTerminate` is triggered, we send a synchronous HTTP request to delete the session before the app is killed.
 
-> [!WARNING]
-> **Important Note on SceneDelegate**:
-> If your iOS app uses a Scene-based lifecycle (contains `SceneDelegate.swift` and has `UIApplicationSceneManifest` in `Info.plist`), the `window` property in `AppDelegate.swift` will always be `nil` during launch because window creation is delegated to `SceneDelegate`.
->
-> In this case, you **must** register the `FlutterMethodChannel` inside the `SceneDelegate.swift` file (within the `scene(_:willConnectTo:options:)` callback) instead of `AppDelegate.swift`. The session data will still be saved to the shared `UserDefaults` and read by `AppDelegate`'s `applicationWillTerminate` on app kill.
+> [!IMPORTANT]
+> Flutter now defaults to the `UIScene` lifecycle (as of Flutter 3.41+). Per Apple's requirement and Flutter's [UISceneDelegate migration guide](https://docs.flutter.dev/release/breaking-changes/uiscenedelegate), UI-related logic (such as `MethodChannel` handlers) must be placed in `SceneDelegate`, while `AppDelegate` handles process-level events only.
 
-### Step 3.1: Implement AppDelegate.swift (For apps WITHOUT SceneDelegate)
+### Step 3.1: Implement AppDelegate.swift
+
+Handles process-level events: crash reporting, plugin registration, and session cleanup on app termination.
+**Do not** register the `MethodChannel` here — that belongs in `SceneDelegate`.
 
 ```swift
-import UIKit
 import Flutter
+import UIKit
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
-    private let channelName = "com.sf.mintel.chat.helper/session"
-
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
     override func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        GeneratedPluginRegistrant.register(with: self)
-        let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
-        
-        if let controller = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: channelName, binaryMessenger: controller.binaryMessenger)
-            channel.setMethodCallHandler { (call, result) in
-                if call.method == "saveSession" {
-                    if let args = call.arguments as? [String: Any],
-                       let sessionId = args["sessionId"] as? String,
-                       let token = args["token"] as? String,
-                       let endpoint = args["endpoint"] as? String {
-                        self.saveSession(sessionId: sessionId, token: token, endpoint: endpoint)
-                        result(nil)
-                    } else {
-                        result(FlutterError(code: "INVALID_ARGUMENTS", message: "Arguments error", details: nil))
-                    }
-                } else if call.method == "clearSession" {
-                    self.clearSession()
-                    result(nil)
-                } else {
-                    result(FlutterMethodNotImplemented)
-                }
-            }
-        }
-        
-        return result
+        setupCrashReporting()
+        return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 
-    private func saveSession(sessionId: String, token: String, endpoint: String) {
-        let defaults = UserDefaults.standard
-        defaults.set(sessionId, forKey: "sf_session_id")
-        defaults.set(token, forKey: "sf_token")
-        defaults.set(endpoint, forKey: "sf_endpoint")
-        defaults.synchronize()
-    }
-
-    private func clearSession() {
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: "sf_session_id")
-        defaults.removeObject(forKey: "sf_token")
-        defaults.removeObject(forKey: "sf_endpoint")
-        defaults.synchronize()
+    func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+        GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     }
 
     override func applicationWillTerminate(_ application: UIApplication) {
-        // App is terminating (swiped away / force-closed)
-        // Initiate request to delete the session.
-        // Note: iOS cancels background URLSession tasks when the user force-quits the app (swipes away),
-        // so a synchronous foreground network request with a short timeout is much more reliable.
         let defaults = UserDefaults.standard
         guard let sessionId = defaults.string(forKey: "sf_session_id"),
               let token = defaults.string(forKey: "sf_token"),
@@ -285,22 +243,21 @@ import Flutter
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         let json: [String: Any] = [
             "conversationId": sessionId,
             "token": token,
-            "activity": "delete"
+            "activity": "delete",
         ]
-        
+
         guard let jsonData = try? JSONSerialization.data(withJSONObject: json) else { return }
         request.httpBody = jsonData
 
-        // Use a semaphore to make the call synchronous during app termination.
         let semaphore = DispatchSemaphore(value: 0)
-        
+
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 2.5 // Set timeout short enough so we don't hang too long
-        
+        config.timeoutIntervalForRequest = 2.5
+
         let session = URLSession(configuration: config)
         let task = session.dataTask(with: request) { data, response, error in
             if let error = error {
@@ -311,18 +268,19 @@ import Flutter
             semaphore.signal()
         }
         task.resume()
-        
-        // Wait for the request to complete (up to 2.5 seconds)
+
         _ = semaphore.wait(timeout: .now() + 2.5)
-        
-        // Immediately clean native credentials to prevent duplicate trigger
-        clearSession()
+
+        defaults.removeObject(forKey: "sf_session_id")
+        defaults.removeObject(forKey: "sf_token")
+        defaults.removeObject(forKey: "sf_endpoint")
     }
 }
 ```
 
-### Step 3.2: Implement SceneDelegate.swift (For apps WITH SceneDelegate)
-If your app uses `SceneDelegate.swift`, implement it as follows to register the channel:
+### Step 3.2: Implement SceneDelegate.swift
+
+Handles UI-level communication: registers the `MethodChannel` to receive `saveSession` and `clearSession` calls from Flutter.
 
 ```swift
 import Flutter
@@ -337,7 +295,7 @@ class SceneDelegate: FlutterSceneDelegate {
         options connectionOptions: UIScene.ConnectionOptions
     ) {
         super.scene(scene, willConnectTo: session, options: connectionOptions)
-        
+
         if let controller = window?.rootViewController as? FlutterViewController {
             let channel = FlutterMethodChannel(name: channelName, binaryMessenger: controller.binaryMessenger)
             channel.setMethodCallHandler { [weak self] (call, result) in
@@ -345,7 +303,8 @@ class SceneDelegate: FlutterSceneDelegate {
                     if let args = call.arguments as? [String: Any],
                        let sessionId = args["sessionId"] as? String,
                        let token = args["token"] as? String,
-                       let endpoint = args["endpoint"] as? String {
+                       let endpoint = args["endpoint"] as? String
+                    {
                         self?.saveSession(sessionId: sessionId, token: token, endpoint: endpoint)
                         result(nil)
                     } else {
@@ -366,7 +325,6 @@ class SceneDelegate: FlutterSceneDelegate {
         defaults.set(sessionId, forKey: "sf_session_id")
         defaults.set(token, forKey: "sf_token")
         defaults.set(endpoint, forKey: "sf_endpoint")
-        defaults.synchronize()
     }
 
     private func clearSession() {
@@ -374,7 +332,6 @@ class SceneDelegate: FlutterSceneDelegate {
         defaults.removeObject(forKey: "sf_session_id")
         defaults.removeObject(forKey: "sf_token")
         defaults.removeObject(forKey: "sf_endpoint")
-        defaults.synchronize()
     }
 }
 ```

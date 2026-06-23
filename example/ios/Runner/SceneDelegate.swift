@@ -40,7 +40,6 @@ class SceneDelegate: FlutterSceneDelegate {
         defaults.set(sessionId, forKey: "sf_session_id")
         defaults.set(token, forKey: "sf_token")
         defaults.set(endpoint, forKey: "sf_endpoint")
-        defaults.synchronize()
     }
 
     private func clearSession() {
@@ -48,6 +47,5 @@ class SceneDelegate: FlutterSceneDelegate {
         defaults.removeObject(forKey: "sf_session_id")
         defaults.removeObject(forKey: "sf_token")
         defaults.removeObject(forKey: "sf_endpoint")
-        defaults.synchronize()
     }
 }
