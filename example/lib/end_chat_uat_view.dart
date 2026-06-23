@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:sf_chat_helper/salesforce_chat_helper.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-class EndChatView extends StatefulWidget {
-  const EndChatView({super.key});
+class EndChatUatView extends StatefulWidget {
+  const EndChatUatView({super.key});
 
   @override
-  State<EndChatView> createState() => _EndChatViewState();
+  State<EndChatUatView> createState() => _EndChatUatViewState();
 }
 
-class _EndChatViewState extends State<EndChatView> with WidgetsBindingObserver {
+class _EndChatUatViewState extends State<EndChatUatView> with WidgetsBindingObserver {
   late final WebViewController controller;
   late final SalesforceChatHelper chatHelper;
 
@@ -22,7 +22,7 @@ class _EndChatViewState extends State<EndChatView> with WidgetsBindingObserver {
     chatHelper = SalesforceChatHelper.builder()
         .setWebViewController(controller)
         .setSupportUrl(
-          "https://bitkubexchange--uat.sandbox.my.site.com/en/support",
+          "https://bitkubexchange--uat.sandbox.my.site.com",
         )
         .setOnVisibilityChanged(() => setState(() {}))
         .setLoggingEnabled(true)
@@ -30,6 +30,8 @@ class _EndChatViewState extends State<EndChatView> with WidgetsBindingObserver {
         .setUatApexEndpoint(
           "https://bitkubexchange--uat.sandbox.my.salesforce-sites.com/publicapi/services/apexrest/update-session",
         )
+    ///link prod
+        .setProdApexEndpoint("endpoint")
         // .setCustomRequest(true)
         .build();
 
@@ -59,7 +61,7 @@ class _EndChatViewState extends State<EndChatView> with WidgetsBindingObserver {
         if (didPop) return;
 
         await chatHelper.closeAndClear();
-        
+
         if (context.mounted) {
           Navigator.of(context).pop();
         }

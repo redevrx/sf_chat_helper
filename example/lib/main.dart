@@ -1,4 +1,5 @@
-import 'package:example/end_chat_view.dart';
+import 'package:example/end_chat_prod_view.dart';
+import 'package:example/end_chat_uat_view.dart';
 import 'package:flutter/material.dart';
 
 void main() {
@@ -13,7 +14,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
-      home: EndChatView(),
+      home: EndChatProdView(),
     );
   }
 }
